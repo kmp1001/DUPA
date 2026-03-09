@@ -1,0 +1,126 @@
+# lightning.pytorch==2.4.0
+seed_everything: true
+tags:
+  exp: &exp repa_flatten_condit22_dit6_fixt_xl
+torch_hub_dir: null
+huggingface_cache_dir: null
+trainer:
+  default_root_dir: universal_flow_workdirs
+  accelerator: auto
+  strategy: auto
+  devices: auto
+  num_nodes: 1
+  precision: 16-mixed #  revised: the same as REPA, for fair comparison. DDT uses fp16-mixed, REPA used bf16-mixed.
+  logger:
+      class_path: lightning.pytorch.loggers.WandbLogger
+      init_args:
+        project: universal_flow
+        name: *exp
+  num_sanity_val_steps: 0
+  max_steps: 400365           # 400k training
+  val_check_interval: 400365  # 400k training
+  check_val_every_n_epoch: null
+  log_every_n_steps: 50000    # logging instead of wandb, sometimes difficult to check
+  deterministic: null
+  inference_mode: true
+  use_distributed_sampler: false
+  callbacks:
+    - class_path: src.callbacks.model_checkpoint.CheckpointHook
+      init_args:
+        every_n_train_steps: 100000 # revised this, now save 4 ckpts in 400k training
+        save_top_k: -1
+        save_last: true
+    - class_path: src.callbacks.save_images.SaveImagesHook
+      init_args:
+         save_dir: val
+    # save gradients to analyse gradient change between repa loss and flow matching loss
+    - class_path: src.callbacks.save_grad_stats.SaveGradStatsHook
+      init_args:
+         save_dir: log_for_info
+         log_interval : 2500
+    #  revised: the same as REPA, for fair comparison.
+    - class_path: src.callbacks.TF32.TF32Callback
+      init_args:
+        enabled: true
+
+  plugins:
+    - src.plugins.bd_env.BDEnvironment
+model:
+  vae:
+    class_path: src.models.vae.LatentVAE
+    init_args:
+      precompute: true
+      weight_path: path_to_models     # need to revised
+  denoiser:
+    class_path: src.models.denoiser.decoupled_sit.DDT
+    init_args:
+      in_channels: 4
+      patch_size: 2
+      num_groups: 12
+      hidden_size: &hidden_dim 768
+      num_blocks: 12
+      num_encoder_blocks: 8
+      num_classes: 1000
+  conditioner:
+    class_path: src.models.conditioner.LabelConditioner
+    init_args:
+      null_class: 1000
+  diffusion_trainer:
+    class_path: src.diffusion.stateful_flow_matching.training_repa.REPATrainer
+    init_args:
+      lognorm_t: false
+      encoder_weight_path: dinov2_vitb14   # this could be changed for vision encoder setting
+      align_layer: 4
+      encoder_anchor: 2                     # revised, encoder anchor for gradient logging
+      encoder_depth: 9                      # revised, set dino align block number
+      encoder_depth_structual: 7            # revised, for structural alignment
+      decoder_anchor: 8                     # revised, decoder anchor for gradient logiing
+      log_interval: 2500                    # logging frequency
+      feat_loss_weight: 0.5                 # same as DDT and REPA, loss weight for REPA
+      # note: DUPA paper 0.5, code implementation 1.0 our experiment(SOTA sFID) set 0.5, Personally(Temporally) Set 1.0
+      disp_loss_weight: 0.5                 # support dispersive loss
+      proj_denoiser_dim: *hidden_dim
+      proj_hidden_dim: *hidden_dim
+      proj_encoder_dim: 768
+      scheduler: &scheduler src.diffusion.stateful_flow_matching.scheduling.LinearScheduler
+  diffusion_sampler:
+    class_path: src.diffusion.stateful_flow_matching.sampling.EulerSampler
+    init_args:
+      num_steps: 250
+      guidance: 1.0                         # 1.0 for no CFG, and set bigger for CFG and its scale
+      timeshift: 1.0
+      state_refresh_rate: 1
+      guidance_interval_min: 0.3
+      guidance_interval_max: 1.0
+      scheduler: *scheduler
+      w_scheduler: src.diffusion.stateful_flow_matching.scheduling.LinearScheduler
+      guidance_fn: src.diffusion.base.guidance.simple_guidance_fn
+      last_step: 0.04
+      step_fn: src.diffusion.stateful_flow_matching.sampling.ode_step_fn
+  ema_tracker:
+    class_path: src.callbacks.simple_ema.SimpleEMA
+    init_args:
+      decay: 0.9999
+  optimizer:
+    class_path: torch.optim.AdamW
+    init_args:
+      lr: 1e-4
+      betas:
+        - 0.9
+        - 0.95                                # same as DDT, DUPA is differnt, 0.999
+      weight_decay: 0.0
+data:
+  train_dataset: imagenet256
+  train_root: /data/lzw_25/dataset/ImageNet/train
+  train_image_size: 256
+  train_batch_size: 32
+  eval_max_num_instances: 50000                # 50k eval and ADM evaluation suits
+  pred_batch_size: 32
+  pred_num_workers: 4 
+  pred_seeds: null
+  pred_selected_classes: null
+  num_classes: 1000
+  latent_shape:
+  - 4
+  - 32
+  - 32
