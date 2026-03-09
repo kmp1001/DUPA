@@ -1,6 +1,6 @@
 # [In Progress] Unified Framework for SiT / REPA / DDT / DUPA
 
-A unified research codebase for diffusion transformers, representation alignment, and condition alignment.
+![Overview](arc.png)
 
 This repository integrates **SiT**, **REPA**, **DDT**, and **DUPA training** into a single experimental framework, with a focus on:
 
