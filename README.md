@@ -1,6 +1,6 @@
 # [In Progress] Unified Framework for SiT / REPA / DDT / DUPA
 
-![Overview](arc.png)
+![Overview](arc1.png)
 
 This repository integrates **SiT**, **REPA**, **DDT**, and **DUPA training** into a single experimental framework, with a focus on:
 
