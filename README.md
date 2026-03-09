@@ -9,13 +9,14 @@ This repository integrates **SiT**, **REPA**, **DDT**, and **DUPA training** int
 - customizable representation-alignment objectives,
 - gradient interaction analysis during and after training,
 - reproducible DUPA-style experiments. (Note: DUPA isn't open-source until now!)
-
+---
 
 ### Flexible REPA target definition
 You can customize **what to align** and **where to align**:
 
 - which **SiT / DiT / DDT block** to hook,
 - which **DINO block** to use as supervision,
+---
 
 ### Multiple alignment losses
 The framework is designed to support multiple alignment objectives, including:
@@ -29,6 +30,8 @@ The framework is designed to support multiple alignment objectives, including:
 
 You can swap or combine them to study how different alignment signals affect optimization, stability, and generation quality.
 
+---
+
 ### Gradient interaction analysis
 
 The framework supports:
@@ -36,12 +39,14 @@ The framework supports:
 - measuring **gradient cosine similarity or angle** between losses,
 - computing block-wise and whole-model gradient norms,
 - running **post-training checkpoint analysis** to inspect how gradient relations evolve across training.
+---
 
 ### Visualize by PCA and t-SNE
 
 The framework supports:
 - Use **PCA** to analyze different blocks of SiT,
 - Use **t-SNE** to analyze different blocks of SiT.
+---
   
 ### Fairer comparison between DDT and REPA variants
 Some implementation details differ across released codebases and may lead to unfair conclusions if copied directly.
@@ -53,6 +58,7 @@ This framework fixes and standardizes parts of the setup so that comparisons acr
 
 are more controlled and fair. (Note: All settings are the same as REPA.)
 
+---
 
 ## Usages
 ### Training
@@ -60,6 +66,7 @@ are more controlled and fair. (Note: All settings are the same as REPA.)
 ```bash
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python main.py fit -c configs/XXX.yaml
 ```
+---
 
 ### Predicting/Sampling
 ```bash
@@ -69,6 +76,8 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python main.py predict -c configs/XXXyaml -
 - eval_max_num_instances: 50 does not literally mean saving only 50 samples. In practice, the number of saved samples is rounded up to a larger value. For example, setting it to 50 will actually save 1000 samples.
 
 - During sampling, the samples are generated on 8 GPUs with eval_batch_size = 32, so each round produces 32 × 8 = 256 samples in total. Therefore, the saving process is performed over multiple rounds until the target number of samples is reached, and the last round may contain fewer samples.
+
+---
 
 ### Evaluation
 
@@ -142,7 +151,7 @@ sFID: 6.140433703346162
 Precision: 0.8265
 Recall: 0.5309
 ```
-
+---
 
 ### Classifier-Free Guidance (CFG) Modification Guide
 In this framework, the guidance scale is controlled in the config file:
@@ -174,6 +183,8 @@ def __call__(self, net, ema_net, raw_images, x, condition, uncondition, step):
 ```
 This step prepares the inputs required for classifier-free guidance by incorporating both conditional and unconditional branches before calling _impl_trainstep.
 
+---
+
 ### [1] Choose different yaml could help you adjust the training target
 ```yaml
   denoiser:
@@ -183,6 +194,7 @@ This step prepares the inputs required for classifier-free guidance by incorpora
 - **DDT**: decouple_improved_dit.DDT
 - **REPA**: repa_sit.REPA
 - **SiT**: repa_sit.SiT
+---
 
 ### [2] Choose different loss
 In src/diffusion/stateful_flow_matching/training_repa.py
@@ -193,6 +205,7 @@ In src/diffusion/stateful_flow_matching/training_repa.py
 - **Self-similarity loss** : In progress, release recently
 - **InfoNCE-L2 loss** : info_nce_l2_loss
 - **InfoNCE-cosine loss** : info_nce_cosine_loss
+---
 
 ### [3] Gradient angle Logging
 You can set any gradident angle(such as angle between cosine loss and flow matching loss). And considering encoder-decoder architecture in DDT, you need to adjust encoder and decoder anchor, which represents angle is computed on the anchor block. Note: encoder anchor blovk num must be less than alignment block number, decoder is also the same.
@@ -207,6 +220,8 @@ e.g., for alignment 0 1 2 3 (order doesn't matter), locate the corresponding ckp
 
 **Tips**: For alignments of 4567 and 7654, both use the --gradient parameter as 4 5 6 7; the order doesn't matter.
 
+---
+
 ### [4] Visualize
 
 ```bash
@@ -215,11 +230,15 @@ python main_pca.py --ckpt=/data/lzw_25/result_ckpt/SiT_XL_2/XXX.ckpt --save_path
 
 Please revise ckpt path and save_path according to your needs.
 
+---
+
 ### [5] Fair Comparison
 
 The original DDT configuration uses different settings, such as mixed precision and numerical precision. We revised these settings to enable a fairer comparison.
 
-### We plan to integrate more components, such as CKNNA, to further enrich the functionality of this repository.
+---
+
+**We plan to integrate more components, such as CKNNA, to further enrich the functionality of this repository.**
 
 ## Reference
 ```bibtex
