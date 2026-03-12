@@ -55,7 +55,6 @@ def get_f(model, vae, image, res, device, label_id, layersout, time, baseline=Fa
         if baseline:
             f = encode_pixels(vae, image)  # (B,4,h,w)
         else:
-            # diffusers 推荐用 .latent_dist.mean/std 访问；你这里保持原写法
             moments = torch.cat(
                 [vae.encode(image)["latent_dist"].mean, vae.encode(image)["latent_dist"].std],
                 dim=1
