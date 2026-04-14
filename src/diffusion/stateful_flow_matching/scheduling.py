@@ -13,6 +13,19 @@ class LinearScheduler(BaseScheduler):
     def dsigma(self, t) -> Tensor:
         return torch.full_like(t, -1.0).view(-1, 1, 1, 1)
 
+class PerTokenLinearScheduler(BaseScheduler):
+    def alpha(self, t) -> Tensor:
+        return t
+
+    def sigma(self, t) -> Tensor:
+        return 1 - t
+
+    def dalpha(self, t) -> Tensor:
+        return torch.ones_like(t)
+
+    def dsigma(self, t) -> Tensor:
+        return -torch.ones_like(t)
+
 # SoTA for ImageNet!
 class GVPScheduler(BaseScheduler):
     def alpha(self, t) -> Tensor:

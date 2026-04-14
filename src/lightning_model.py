@@ -94,7 +94,6 @@ class LightningModel(pl.LightningModule):
             condition, uncondition = self.conditioner(y)
         loss, outputs = self.diffusion_trainer(self.denoiser, self.ema_denoiser, raw_images, x, condition, uncondition, self.trainer.global_step)
         self.log_dict(loss, prog_bar=True, on_step=True, sync_dist=False)
-        # return loss["loss"]
         return {"loss": loss["loss"], "outputs": outputs}
 
     def predict_step(self, batch, batch_idx):

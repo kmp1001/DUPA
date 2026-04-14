@@ -1,6 +1,7 @@
 import sys
 import os
-sys.path.append("path_to_your_evaluations")   # need tobe revised
+
+sys.path.append("/data/lzw_25/evaluation/guided-diffusion/evaluations")
 import lightning.pytorch as pl
 from lightning.pytorch import Callback
 import argparse
@@ -27,9 +28,9 @@ from typing import Sequence, Any, Dict
 from concurrent.futures import ThreadPoolExecutor
 import json
 import os
+from datetime import datetime
 from lightning.pytorch.utilities.types import STEP_OUTPUT
 from lightning_utilities.core.rank_zero import rank_zero_info
-from datetime import datetime
 
 def process_fn(image, path):
     Image.fromarray(image).save(path)
@@ -78,23 +79,35 @@ class SaveImagesHook(Callback):
             all_samples = all_samples.permute(0, 2, 3, 1).cpu().numpy()
             self.samples.append(all_samples)
 
-    # revised, supports metric computing after generating npz
+    # def save_end(self):
+    #     if self.compressed and len(self.samples) > 0:
+    #         samples = numpy.concatenate(self.samples)
+    #         numpy.savez(f'{self.target_dir}/output.npz', arr_0=samples)
+    #     # 做evaluation
+    #     # 原本单独执行的命令行是python evaluator.py /data/lzw_25/iREPA/ldm/VIRTUAL_imagenet256_labeled.npz （生成的npz）
+    #     # 现在希望下面写代码自动保存后做测试
+
+    #     self.executor_pool.shutdown(wait=True)
+    #     self.samples = []
+    #     self.target_dir = None
+    #     self._have_saved_num = 0
+    #     self.executor_pool = None
     def save_end(self):
         if self.compressed and len(self.samples) > 0:
             samples = numpy.concatenate(self.samples)
             sample_path = f'{self.target_dir}/output.npz'
             numpy.savez(sample_path, arr_0=samples)
 
+            # ========== 自动评估部分 ==========
             if torch.distributed.is_available():
                 is_main = torch.distributed.get_rank() == 0
             else:
                 is_main = True
 
             if is_main:
-                # rank0
                 rank_zero_info("Starting evaluation...")
 
-                ref_path = path_to_your_npz       # need to be revised
+                ref_path = "/data/lzw_25/iREPA/ldm/VIRTUAL_imagenet256_labeled.npz"
 
                 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
                 evaluator = Evaluator(device)
@@ -111,7 +124,6 @@ class SaveImagesHook(Callback):
                 fid = sample_stats.frechet_distance(ref_stats)
                 sfid = sample_stats_spatial.frechet_distance(ref_stats_spatial)
                 prec, recall = evaluator.compute_prec_recall(ref_acts[0], sample_acts[0])
-
 
                 print("========== Evaluation Results ==========")
                 print("Inception Score:", is_score)

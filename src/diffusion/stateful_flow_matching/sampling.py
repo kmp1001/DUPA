@@ -89,9 +89,7 @@ class EulerSampler(BaseSampler):
             cfg_t = t_cur.repeat(2)
             if i % self.state_refresh_rate == 0:
                 state = None
-            # revised, supporting attention interface
-            out, state, useless = net(cfg_x, cfg_t, cfg_condition, state)
-
+            out, state, attn_acts = net.forward_sample(cfg_x, cfg_t, cfg_condition, state)
             if t_cur[0] > self.guidance_interval_min and t_cur[0] < self.guidance_interval_max:
                 out = self.guidance_fn(out, self.guidance)
             else:

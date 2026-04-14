@@ -21,22 +21,30 @@ class LocalCachedDataset(ImageFolder):
         latent = mean + torch.randn_like(mean) * std
         return latent
 
-# revised
-# The old implementation accesses the exact indexed sample and expects its latent cache to be present.
-# The new implementation introduces a fallback mechanism: if the latent file is missing, it searches forward for the next valid sample and returns that one instead.
-# it is useful in the practical cases
+    # def __getitem__(self, idx: int):
+    #     image_path, target = self.samples[idx]
+    #     latent_path = image_path.replace(self.root, self.cache_root) + ".pt"
 
+    #     raw_image = Image.open(image_path).convert('RGB')
+    #     raw_image = self.transform(raw_image)
+    #     raw_image = to_tensor(raw_image)
+    #     if self.cache_root is not None:
+    #         latent = self.load_latent(latent_path)
+    #     else:
+    #         latent = raw_image
+    #     return raw_image, latent, target
     def __getitem__(self, idx: int):
+        # 向后查找，直到找到有 latent 的样本
         while True:
             image_path, target = self.samples[idx]
             latent_path = image_path.replace(self.root, self.cache_root) + ".pt"
 
             if self.cache_root is not None and not os.path.exists(latent_path):
-                # jump to next
+                # latent 不存在，跳到下一个 index
                 idx = (idx + 1) % len(self.samples)
                 continue
 
-            # latent exists
+            # ---- 走到这里说明 latent 是存在的 ----
             raw_image = Image.open(image_path).convert('RGB')
             raw_image = self.transform(raw_image)
             raw_image = to_tensor(raw_image)
@@ -47,7 +55,6 @@ class LocalCachedDataset(ImageFolder):
                 latent = raw_image
 
             return raw_image, latent, target
-
 
 class ImageNet256(LocalCachedDataset):
     def __init__(self, root, ):
