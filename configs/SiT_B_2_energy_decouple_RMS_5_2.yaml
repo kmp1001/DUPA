@@ -1,7 +1,7 @@
 # lightning.pytorch==2.4.0
 seed_everything: true
 tags:
-  exp: &exp energy_based_alignment
+  exp: &exp SiT_B_2_energy_decouple_RMS_5_2
 torch_hub_dir: null
 huggingface_cache_dir: null
 trainer:
