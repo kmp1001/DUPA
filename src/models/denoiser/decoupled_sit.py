@@ -512,7 +512,7 @@ class DDT(nn.Module):
         return imgs
     
     # def forward(self, x, whole, part1, part2, t, y, s=None):
-    def forward(self, x, x1, t, t1, y, s=None, encode_viz: bool = False):
+    def forward(self, x, t, y, s=None):
         """
         Forward pass of SiT.
         x: (B, C, H, W) tensor of spatial inputs (images or latent representations of images)
@@ -527,45 +527,35 @@ class DDT(nn.Module):
         # t_embed = self.t_embedder(t)
         assert t.dim() == 1, f"t should be (B,), got {t.shape}"                   
         t_embed = self.t_embedder(t.view(-1)).view(N, -1, self.hidden_size) # (N, 1, D)
-        t_embed1 = self.t_embedder(t1.view(-1)).view(N, -1, self.hidden_size) # (N, 1, D)
+        # t_embed1 = self.t_embedder(t1.view(-1)).view(N, -1, self.hidden_size) # (N, 1, D)
         y = self.y_embedder(y).view(N, 1, self.hidden_size)    # (N, 1, D)
-        # c = t_embed + y                               # (N, 1, D)
+        c = t_embed + y                               # (N, 1, D)
         # c1 = t_embed1 + y
-        c = t_embed                               # (N, 1, D)
-        c1 = t_embed1
+        # c = t_embed                               # (N, 1, D)
+        # c1 = t_embed1
         attn_acts = []
 
-        enc_viz = None
         if s is None:
-            capture_enc = bool(encode_viz)
-            viz_mid1 = [] if capture_enc else None
-            viz_mid2 = [] if capture_enc else None
-
-            mid1_blocks = []
+            encoder_blocks = []
             s = self.s_embedder(x) + self.pos_embed
             for i in range(self.num_encoder_blocks):
-                slot = [] if capture_enc else None
-                s, attn_logits = self.blocks[i](s, c, viz_out=slot)
-                mid1_blocks.append(s)   # 每个 block 后的输出
-                if slot is not None:
-                    viz_mid1.append(slot)
+                s, attn_logits = self.blocks[i](s, c)
+                encoder_blocks.append(s)   # 每个 block 后的输出
             mid1 = s
 
-            s = nn.functional.silu(t_embed + s + y)
+            s = nn.functional.silu(t_embed + s)
 
-            s1 = self.s_embedder(x1) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
-            for i in range(self.num_encoder_blocks):
-                slot2 = [] if capture_enc else None
-                s1, _ = self.blocks[i](s1, c1, viz_out=slot2)
-                if slot2 is not None:
-                    viz_mid2.append(slot2)
-            mid2 = s1
-
-            if capture_enc:
-                enc_viz = {"mid1": viz_mid1, "mid2": viz_mid2}
+            # s1 = self.s_embedder(x1) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
+            # for i in range(self.num_encoder_blocks):
+            #     slot2 = [] if capture_enc else None
+            #     s1, _ = self.blocks[i](s1, c1, viz_out=slot2)
+            #     if slot2 is not None:
+            #         viz_mid2.append(slot2)
+            # mid2 = s1
         else:
             # 与历史接口兼容：带 x1 的训练路径始终 s=None；若传入 s 则不再计算 mid1/mid2
-            mid1 = mid2 = None
+            # mid1 = mid2 = None
+            mid1 = None
 
 
         # part1 = self.s_embedder1(part1) + self.pos_embed1  # (N, T, D), where T = H * W / patch_size ** 2
@@ -585,8 +575,10 @@ class DDT(nn.Module):
 
                            
         x = self.x_embedder(x) + self.pos_embed
+        decoder_blocks = []
         for i in range(self.num_encoder_blocks, self.num_blocks):
             x, attn_logits = self.blocks[i](x, s)
+            decoder_blocks.append(x)
 
 
         # for i in range(self.num_blocks):
@@ -607,8 +599,8 @@ class DDT(nn.Module):
         x = self.unpatchify(x)                   # (B, out_channels, H, W)
         # attn_acts = torch.stack(attn_acts,dim=0)  # (L, B, H, T, T)
 
-        return x, c, mid1, mid1_blocks, mid2, attn_acts, enc_viz
-
+        return x, c, mid1, encoder_blocks, decoder_blocks, attn_acts
+        
     def forward_sample(self, x, t, y, s=None):
         """
         Forward pass of SiT.
@@ -624,7 +616,7 @@ class DDT(nn.Module):
         assert t.dim() == 1, f"t should be (B,), got {t.shape}"                   
         t_embed = self.t_embedder(t.view(-1)).view(N, -1, self.hidden_size) # (N, 1, D)
         y = self.y_embedder(y).view(N, 1, self.hidden_size)    # (N, 1, D)
-        c = t_embed                               # (N, 1, D)
+        c = t_embed + y                               # (N, 1, D)
         attn_acts = []
 
         if s is None:
@@ -632,7 +624,7 @@ class DDT(nn.Module):
             for i in range(self.num_encoder_blocks):
                 s, attn_logits = self.blocks[i](s, c)
 
-            s = nn.functional.silu(t_embed + s + y)
+            s = nn.functional.silu(t_embed + s)
 
                            
         x = self.x_embedder(x) + self.pos_embed
@@ -665,7 +657,6 @@ class PerTokenDDT(DDT):
     Diffusion model with a Transformer backbone.
     """
     def __init__(self, **kwargs):
-        # Initialize parent class (creates standard DiTBlocks)
         super().__init__(**kwargs)
 
         hidden_size = kwargs["hidden_size"]
@@ -674,10 +665,20 @@ class PerTokenDDT(DDT):
         in_channels = kwargs["in_channels"]
         out_channels = in_channels
 
-        # Convert standard blocks to per-token versions, preserving weights
-        self._convert_to_per_token_blocks(hidden_size, num_groups, patch_size, out_channels)   
+        self._convert_to_per_token_blocks(
+            hidden_size,
+            num_groups,
+            patch_size,
+            out_channels,
+        )
 
-    def _convert_to_per_token_blocks(self, hidden_size, num_groups, patch_size, out_channels):
+    def _convert_to_per_token_blocks(
+        self,
+        hidden_size,
+        num_groups,
+        patch_size,
+        out_channels,
+    ):
         """Convert DDTBlocks to PerTokenDDTBlocks while preserving weights."""
         new_blocks = nn.ModuleList()
         for original_block in self.blocks:
@@ -691,27 +692,14 @@ class PerTokenDDT(DDT):
         new_final.load_state_dict(original_final.state_dict())
         self.final_layer = new_final
 
-    def forward(self, x, t, y, s=None):
+    def _build_per_token_condition(self, t, y, batch_size, seq_len):
         """
-        Forward pass of SiT.
-        x: (B, C, H, W) tensor of spatial inputs (images or latent representations of images)
-        t: (B, N) tensor of diffusion timesteps
-        y: (B,) tensor of class labels
+        t:
+            [B]    -> broadcast to [B, N, D]
+            [B, N] -> per-token timestep embedding
+        y:
+            [B]
         """
-        N, channel, height, width = x.shape
-        # x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
-        # N, T, D = x.shape
-        # timestep and class embedding
-        # t_embed = self.t_embedder(t)
-                
-        # t_embed = self.t_embedder(t.view(-1)).view(N, -1, self.hidden_size) # (N, 1, D)
-        # y = self.y_embedder(y).view(N, 1, self.hidden_size)    # (N, 1, D)
-        # c = t_embed + y                                # (N, 1, D)
-        attn_acts = []
-                
-        x = self.x_embedder(x) + self.pos_embed
-        batch_size, seq_len, hidden_dim = x.shape
-        # Handle timestep embedding - per-token or broadcast
         if t.ndim == 1:
             t_emb = self.t_embedder(t).unsqueeze(1).expand(-1, seq_len, -1)
         elif t.ndim == 2:
@@ -719,27 +707,104 @@ class PerTokenDDT(DDT):
             t_emb_flat = self.t_embedder(t_flat)
             t_emb = t_emb_flat.reshape(batch_size, seq_len, -1)
         else:
-            raise ValueError(f"Timesteps must be 1D or 2D, got shape {t.shape}") 
+            raise ValueError(f"Timesteps must be 1D or 2D, got shape {t.shape}")
 
-        # Class embedding (broadcast to per-token)
-        y_embed = self.y_embedder(y).unsqueeze(1).expand(-1, seq_len, -1)
+        y_emb = self.y_embedder(y).unsqueeze(1).expand(-1, seq_len, -1)
 
-        # Combine embeddings
-        c = t_emb + y_embed
+        c = t_emb + y_emb
+        return c, t_emb
 
-        for i in range(self.num_blocks):
-            x, attn_logits = self.blocks[i](x, c)
-        # for i, block in enumerate(self.blocks):
-        #     if ((i + 1) <= self.encoder_depth) and (return_act is not None):
-        #         x, attn_logits = block(x, c, return_act)
-        #         attn_acts.append(attn_logits)
-        #         if (i + 1) == self.encoder_depth:
-        #             zs = [projector(x.reshape(-1, D)).reshape(N, T, -1) for projector in self.projectors]
-        #             # zs.append(x)
-        #     else:
-        #         x = block(x, c)
-        x = self.final_layer(x, c)                # (B, T, patch_size ** 2 * out_channels)
-        x = self.unpatchify(x)                   # (B, out_channels, H, W)
-        # attn_acts = torch.stack(attn_acts,dim=0)  # (L, B, H, T, T)
+    def forward(self, x, t, fetch_encoder, y, s=None):
+        """
+        x: [B, C, H, W]
+        t: [B] or [B, N]
+        y: [B]
+        """
+        # 保存原始 4D 输入，不能被 token 变量覆盖
+        x_img = x
+        B, C, H, W = x_img.shape
 
-        return x, c, attn_acts
+        attn_acts = []
+
+        # 先 patchify main branch，用它得到 seq_len
+        x_tok = self.x_embedder(x_img) + self.pos_embed
+        batch_size, seq_len, hidden_dim = x_tok.shape
+
+        # 构造 per-token condition
+        c, t_emb = self._build_per_token_condition(
+            t=t,
+            y=y,
+            batch_size=batch_size,
+            seq_len=seq_len,
+        )
+
+        fetch_x = None
+
+        if s is None:
+            # 注意：这里必须输入 x_img，而不是 x_tok
+            s_tok = self.s_embedder(x_img) + self.pos_embed
+
+            for i in range(self.num_encoder_blocks):
+                s_tok, attn_logits = self.blocks[i](s_tok, c)
+
+                if i == fetch_encoder - 1:
+                    fetch_x = s_tok
+
+            if fetch_x is None:
+                fetch_x = s_tok
+
+            condition = s_tok
+            s_tok = nn.functional.silu(t_emb + s_tok)
+        else:
+            # 如果外部传入 s，默认它已经是 decoder condition
+            s_tok = s
+            condition = s_tok
+            fetch_x = s_tok
+
+        # decoder blocks
+        for i in range(self.num_encoder_blocks, self.num_blocks):
+            x_tok, attn_logits = self.blocks[i](x_tok, s_tok)
+
+        x_out = self.final_layer(x_tok, s_tok)
+        x_out = self.unpatchify(x_out)
+
+        return x_out, condition, fetch_x, attn_acts
+
+    def forward_sample(self, x, t, y, s=None):
+        """
+        x: [B, C, H, W]
+        t: [B] or [B, N]
+        y: [B]
+        """
+        x_img = x
+        B, C, H, W = x_img.shape
+
+        attn_acts = []
+
+        x_tok = self.x_embedder(x_img) + self.pos_embed
+        batch_size, seq_len, hidden_dim = x_tok.shape
+
+        c, t_emb = self._build_per_token_condition(
+            t=t,
+            y=y,
+            batch_size=batch_size,
+            seq_len=seq_len,
+        )
+
+        if s is None:
+            s_tok = self.s_embedder(x_img) + self.pos_embed
+
+            for i in range(self.num_encoder_blocks):
+                s_tok, attn_logits = self.blocks[i](s_tok, c)
+
+            s_tok = nn.functional.silu(t_emb + s_tok)
+        else:
+            s_tok = s
+
+        for i in range(self.num_encoder_blocks, self.num_blocks):
+            x_tok, attn_logits = self.blocks[i](x_tok, s_tok)
+
+        x_out = self.final_layer(x_tok, s_tok)
+        x_out = self.unpatchify(x_out)
+
+        return x_out, c, attn_acts
