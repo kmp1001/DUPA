@@ -76,7 +76,7 @@ if __name__ == "__main__":
     for split in ['train']:
         train = split == 'train'
         transforms = tvtf.Compose([
-            CenterCrop(512),
+            CenterCrop(256),
             # tvtf.RandomHorizontalFlip(p=1),
             tvtf.ToTensor(),
             tvtf.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
@@ -100,7 +100,7 @@ if __name__ == "__main__":
                  for p in path_list:
                      p = p + ".pt"
                      p = p.replace("/mnt/bn/wangshuai6/data/ImageNet/train",
-                                   "/mnt/bn/wangshuai6/data/ImageNet/train_512_latent")
+                                   "/mnt/bn/wangshuai6/data/ImageNet/train_256_latent")
                      new_path_list.append(p)
                      if not os.path.exists(p):
                          print(p)
