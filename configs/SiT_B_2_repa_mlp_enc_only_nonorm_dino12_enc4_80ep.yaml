@@ -1,7 +1,7 @@
 # lightning.pytorch==2.4.0
 seed_everything: true
 tags:
-  exp: &exp SiT_B_2_energy_5_2
+  exp: &exp SiT_B_2_repa_mlp_enc_only_nonorm_dino12_enc4_80ep
 torch_hub_dir: null
 huggingface_cache_dir: null
 trainer:
@@ -13,7 +13,7 @@ trainer:
   precision: 16-mixed
   strategy: ddp_find_unused_parameters_true
   num_sanity_val_steps: 0
-  max_steps: 100092
+  max_steps: 400368
   val_check_interval: 100092
   check_val_every_n_epoch: null
   log_every_n_steps: 10000
@@ -31,7 +31,7 @@ trainer:
     - class_path: src.callbacks.save_images.SaveImagesHook
       init_args:
         save_dir: val
-    - class_path: src.callbacks.save_grad_stats_energy.SaveGradStatsHook
+    - class_path: src.callbacks.save_grad_stats_decouple_baseline.SaveGradStatsHook
       init_args:
         save_dir: log_for_info
         log_interval : 100
@@ -64,22 +64,22 @@ model:
     init_args:
       null_class: 1000
   diffusion_trainer:
-    class_path: src.diffusion.stateful_flow_matching.training_repa_energy.REPATrainer
+    class_path: src.diffusion.stateful_flow_matching.training_repa_enc_only_nonorm.REPATrainer
     init_args:
       lognorm_t: false
       patch_size: 2
       encoder_weight_path: dinov2_vitb14
-      align_layer: [8]          # [4,5,6,7] # 对应的是3，4，5，6，应该仅有这一个是需要减1的
+      align_layer: [4]          # [4,5,6,7] # 对应的是3，4，5，6，应该仅有这一个是需要减1的
       dino_layer_timestep: [9,8,7,6] # 对应下标
       dino_layer_block: [11,10,9,8] # 对应下标
-      encoder_anchor: 7
+      encoder_anchor: 3
       decoder_anchor: 5
       proj_denoiser_dim: *hidden_dim 
       proj_hidden_dim: 2048 # 与DDT不一样，REPA是hidden state --> hidden state（我们是2048） --> 768
       proj_encoder_dim: 768
       proj_dim: 32
       # transform_num: 3
-      encoder_depth: 9 # 对应下标
+      encoder_depth: 11 # 对应下标
       log_interval: 100
       encoder_depth_structual: 7 # structual loss imposed on dino encoder depth(different from encoder_depth which is semantic)
       encoder_begin: 7 # attn_loss begin for dino encoder
@@ -92,10 +92,10 @@ model:
       cov_loss_weight: 0.0
       disp_loss_weight: 0.0     # 0.01
       use_dog_bank_align: true
-      enc_align_block_idx: 5      # 0-based within encoder blocks
+      enc_align_block_idx: 3      # 0-based within encoder blocks
       dec_align_block_idx: 0      # 0-based within decoder blocks
       lambda_enc_align: 0.5
-      lambda_dec_align: 0.2
+      lambda_dec_align: 0.0
       dog_sigmas: [0.5, 1.0, 2.0, 4.0]
       enc_bank_names: ["low_4.0", "dog_2.0_4.0", "dog_1.0_2.0", "dog_0.5_1.0", "high_res_0.5"]
       dec_bank_names: ["low_4.0", "dog_2.0_4.0", "dog_1.0_2.0", "dog_0.5_1.0", "high_res_0.5"]
@@ -109,7 +109,7 @@ model:
       # 设置为0.05时，1000个迭代内 inv_loss几乎不怎么变， 看起来当sigreg loss降低为5.6左右的时候，坍塌没有被解决。
       # 完全不计入inv_loss, sigreg_loss时，训练1000个迭代得到的结果（一般来说两个分支相似度在0.7-0.8左右）是：
       structual_loss_weight: 0.5
-      decoder_depth: 7 # imposed on DDT velocity decoder(from 8-11)
+      decoder_depth: 9 # kept only for DINO decoder feature output; decoder alignment is disabled
       scheduler: &scheduler src.diffusion.stateful_flow_matching.scheduling.LinearScheduler
   diffusion_sampler:
     class_path: src.diffusion.stateful_flow_matching.sampling.EulerSampler
