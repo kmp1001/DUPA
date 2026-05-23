@@ -1,7 +1,7 @@
 # lightning.pytorch==2.4.0
 seed_everything: true
 tags:
-  exp: &exp energy_based_alignment
+  exp: &exp SiT_B_2_energy_5_2
 torch_hub_dir: null
 huggingface_cache_dir: null
 trainer:
@@ -45,7 +45,7 @@ model:
     class_path: src.models.vae.LatentVAE
     init_args:
       precompute: true
-      weight_path: /data/lzw_25/DDT_revise/models
+      weight_path: models
       # 正常训练请修改
   denoiser:
     class_path: src.models.denoiser.decoupled_sit.DDT
@@ -142,7 +142,7 @@ data:
   train_root: /data/lzw_25/dataset/ImageNet/train
   # 正常训练请修改路径
   train_image_size: 256
-  train_batch_size: 32
+  train_batch_size: 64
   # 正常训练请修改
   # whole batch:256
   # 2卡 128
